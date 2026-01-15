@@ -26,6 +26,7 @@ _throttle_state = {
 def reset_pitch_ramp():
     """Reset pitch ramp to zero when switching to UDP mode."""
     _throttle_state["current_pitch"] = 0.0
+    # print("[UDP Input] Pitch ramp reset to 0")
 
 
 def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple:
@@ -47,7 +48,7 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     if shared_state and shared_state.get("reset_pitch_ramp", False):
         _throttle_state["current_pitch"] = 0.0
         shared_state["reset_pitch_ramp"] = False
-        print("[UDP Input] Pitch ramp reset to 0")
+        
     
     # Roll/Yaw control based on dx
     max_correction = 1000  # Max correction value
@@ -77,11 +78,11 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     pitch = current_pitch
     
     # ===== THROTTLE ALGORITHM - PID Controller =====
-    hover_throttle = 1550  # Fixed baseline throttle
+    hover_throttle = -17000  # Fixed baseline throttle
     target_dy = 100  # Target position (negative = target above center)
     
     # PID gains - MORE AGGRESSIVE (increased for faster response, less overshoot)
-    Kp = 500.0   # Proportional gain - much more aggressive immediate response
+    Kp = 50.0   # Proportional gain - much more aggressive immediate response
     Ki = 20.0    # Integral gain - faster correction of steady-state error
     Kd = 80.0   # Derivative gain - stronger dampening to prevent overshoot
     
@@ -117,7 +118,9 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     
     # Debug output (uncomment to tune)
     #print(f"dy={dy:4d} err={error:6.1f} P={P:6.1f} I={I:6.1f} D={D:6.1f} thr={throttle:6.0f}")
-    print(f"Pitch: {pitch:6.0f}, Throttle: {throttle:6.0f}")
+    #print(f"Pitch: {pitch:6.0f}, Throttle: {throttle:6.0f}")
+
+
     return roll, pitch, throttle, yaw
 
 
@@ -127,7 +130,7 @@ def process_udp_input(data: dict, shared_state: dict) -> None:
     dy = data.get("dy", 0)
     
     # Apply correction logic
-    roll, pitch, yaw, throttle = apply_correction_logic(dx, dy, shared_state)
+    roll, pitch, throttle, yaw = apply_correction_logic(dx, dy, shared_state)
     
     # Update shared state
     channels = [0.0] * config.NUM_CHANNELS

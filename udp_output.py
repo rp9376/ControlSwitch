@@ -75,6 +75,7 @@ class UDPOutput:
                 "value": int(value)  # Ensure integer value
             }
             
+            #print(f"[UDPOutput] Sending axis event: {event}")
             data = json.dumps(event).encode("utf-8")
             self.sock.sendto(data, (self.host, self.port))
         

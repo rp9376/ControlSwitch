@@ -27,22 +27,23 @@ OUTPUT_UDP_HOST = "192.168.178.200"  # Destination for output commands
 # CHANNEL CONFIGURATION
 # =============================================================================
 
-# Number of control channels (roll, pitch, yaw, throttle)
+# Number of control channels (roll, pitch, throttle, yaw)
 NUM_CHANNELS = 4
 
-# Channel indices (order: roll, pitch, yaw, throttle)
+# Channel indices (order: roll, pitch, throttle, yaw)
 CHANNEL_ROLL = 0
 CHANNEL_PITCH = 1
-CHANNEL_YAW = 2
-CHANNEL_THROTTLE = 3
+CHANNEL_THROTTLE = 2
+CHANNEL_YAW = 3
+
 
 # Joystick axis number -> channel mapping
 # Maps "number" field from joystick events to our channel indices
 JOYSTICK_AXIS_MAP = {
     0: CHANNEL_ROLL,      # Joystick axis 0 -> Roll
     1: CHANNEL_PITCH,     # Joystick axis 1 -> Pitch
-    2: CHANNEL_YAW,       # Joystick axis 2 -> Yaw
-    3: CHANNEL_THROTTLE,  # Joystick axis 3 -> Throttle
+    2: CHANNEL_THROTTLE,  # Joystick axis 2 -> Throttle
+    3: CHANNEL_YAW,       # Joystick axis 3 -> Yaw
 }
 
 # =============================================================================
