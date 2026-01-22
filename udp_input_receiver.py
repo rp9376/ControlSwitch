@@ -19,13 +19,15 @@ _throttle_state = {
     "integral": 0.0,      # Integral term for I control
     "last_error": 0.0,    # Previous error for D control
     "last_time": 0.0,     # Last update time
-    "current_pitch": 0.0  # Current pitch value for ramping
+    "current_pitch": 0.0, # Current pitch value for ramping
+    "initial_dy": None    # Initial dy value when switching to UDP mode
 }
 
 
 def reset_pitch_ramp():
     """Reset pitch ramp to zero when switching to UDP mode."""
     _throttle_state["current_pitch"] = 0.0
+    _throttle_state["initial_dy"] = None  # Reset initial dy for soft target
     # print("[UDP Input] Pitch ramp reset to 0")
 
 
@@ -42,11 +44,29 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
         shared_state: Shared state dict for reset signals
     
     Returns:
-        (roll, pitch, yaw, throttle) tuple of normalized values (-1.0 to 1.0)
+        (roll, pitch, throttle, yaw) tuple of real control values
     """
+    
+    # Print joystick channel values if available
+    if shared_state:
+        joystick_channels = shared_state.get("joystick_channels", [0.0] * config.NUM_CHANNELS)
+        if False:
+            print(f"[UDP Input] Joystick channels: Roll={joystick_channels[0]:+8.1f}, "
+              f"Pitch={joystick_channels[1]:+8.1f}, Throttle={joystick_channels[2]:+8.1f}, "
+              f"Yaw={joystick_channels[3]:+8.1f}")
+    
     # Check for pitch reset signal from router
     if shared_state and shared_state.get("reset_pitch_ramp", False):
-        _throttle_state["current_pitch"] = 0.0
+        # Start pitch ramp from current joystick pitch to avoid jerk
+        if shared_state:
+            joystick_channels = shared_state.get("joystick_channels", [0.0] * config.NUM_CHANNELS)
+            joystick_pitch = joystick_channels[config.CHANNEL_PITCH]
+            _throttle_state["current_pitch"] = joystick_pitch
+            #print(f"[UDP Input] Starting pitch ramp from joystick pitch: {joystick_pitch:.1f}")
+        else:
+            _throttle_state["current_pitch"] = 0.0
+        
+        _throttle_state["initial_dy"] = None  # Reset initial dy
         shared_state["reset_pitch_ramp"] = False
         
     
@@ -63,8 +83,9 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
         yaw = 0.0
 
     # ===== PITCH RAMPING =====
-    target_pitch = 20000
+    target_pitch = 25000
     ramp_rate = 200  # Units per update (adjust for faster/slower ramp)
+    
     
     current_pitch = _throttle_state["current_pitch"]
     
@@ -76,10 +97,25 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     
     _throttle_state["current_pitch"] = current_pitch
     pitch = current_pitch
+    pitch_ratio = pitch / target_pitch if target_pitch != 0 else 0.0
+    #print(f"Pitch ramp: {pitch:.1f} (ratio: {pitch_ratio:.3f})")
     
-    # ===== THROTTLE ALGORITHM - PID Controller =====
-    hover_throttle = -17000  # Fixed baseline throttle
-    target_dy = 100  # Target position (negative = target above center)
+    # ===== THROTTLE ALGORITHM - PID Controller with Soft Target =====
+    hover_throttle = 0  # Fixed baseline throttle
+    final_target_dy = 100  # Final target position (negative = target above center)
+    
+    # Capture initial dy value when first switching to UDP mode
+    if _throttle_state["initial_dy"] is None:
+        _throttle_state["initial_dy"] = dy
+        #print(f"[UDP Input] Captured initial dy: {dy}")
+    
+    # Gradually transition target_dy from initial position to final target as pitch ramps up
+    # This prevents the PID from fighting the changing drone position during pitch ramp
+    initial_dy = _throttle_state["initial_dy"]
+    target_dy = initial_dy + (final_target_dy - initial_dy) * pitch_ratio
+    
+    #print(f"Soft target: initial={initial_dy:.1f}, current_target={target_dy:.1f}, final={final_target_dy:.1f}, ratio={pitch_ratio:.3f}")
+
     
     # PID gains - MORE AGGRESSIVE (increased for faster response, less overshoot)
     Kp = 50.0   # Proportional gain - much more aggressive immediate response
@@ -114,11 +150,11 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     throttle = hover_throttle + throttle_adjustment
     
     # Clamp to safe limits
-    throttle = max(-30000, min(30000, throttle))
+    throttle = max(-32000, min(32000, throttle))
     
     # Debug output (uncomment to tune)
     #print(f"dy={dy:4d} err={error:6.1f} P={P:6.1f} I={I:6.1f} D={D:6.1f} thr={throttle:6.0f}")
-    #print(f"Pitch: {pitch:6.0f}, Throttle: {throttle:6.0f}")
+    print(f"Pitch: {pitch:6.0f}, Throttle: {throttle:6.0f}")
 
 
     return roll, pitch, throttle, yaw
@@ -126,8 +162,13 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
 
 def process_udp_input(data: dict, shared_state: dict) -> None:
     """Process incoming UDP data and update shared state."""
+    # bx : x position   by : y position   bw : box width   bh : box height
     dx = data.get("dx", 0)
     dy = data.get("dy", 0)
+    bw = data.get("bw", 0)
+    bh = data.get("bh", 0)
+
+    print(f"[UDP Input] Received dx={dx}, dy={dy}, bw={bw}, bh={bh}")
     
     # Apply correction logic
     roll, pitch, throttle, yaw = apply_correction_logic(dx, dy, shared_state)

@@ -39,6 +39,7 @@ class CommandRouter:
         self.output_func = output_func
         self.last_mode = None
         self.loop_interval = 1.0 / config.ROUTER_LOOP_HZ
+        self.skip_frames_after_switch = 0  # Counter to skip frames after mode switch
         
     def get_active_channels(self) -> list:
         """
@@ -56,6 +57,15 @@ class CommandRouter:
             if mode == config.MODE_UDP:
                 self.shared_state["reset_pitch_ramp"] = True
                 print("[Router] Pitch ramp reset requested")
+                
+                # Initialize UDP channels to current joystick values to prevent jerking
+                joystick_channels = list(self.shared_state.get("joystick_channels", config.get_default_channels()))
+                self.shared_state["udp_channels"] = joystick_channels
+                print(f"[Router] UDP channels initialized to joystick values: {joystick_channels}")
+                
+                # Skip first 3 frames after switching to allow UDP receiver to stabilize
+                self.skip_frames_after_switch = 3
+                print("[Router] Will skip first 3 frames after mode switch")
             self.last_mode = mode
         
         if mode == config.MODE_JOYSTICK:
@@ -73,6 +83,13 @@ class CommandRouter:
         Gets active channels and forwards to output.
         """
         channels = self.get_active_channels()
+        
+        # Skip sending data for first few frames after mode switch
+        if self.skip_frames_after_switch > 0:
+            self.skip_frames_after_switch -= 1
+            print(f"[Router] Skipping frame (remaining skips: {self.skip_frames_after_switch})")
+            return
+        
         self.output_func(channels)
     
     def run(self) -> None:
