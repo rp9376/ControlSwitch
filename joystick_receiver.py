@@ -73,6 +73,13 @@ def process_joystick_event(event: dict, shared_state: dict) -> None:
             shared_state["switch_state"] = config.MODE_UDP
         return
     
+    # Store ALL button events for passthrough (except the mode switch button)
+    if event_type == config.EVENT_TYPE_BUTTON:
+        buttons = dict(shared_state.get("joystick_buttons", {}))
+        buttons[number] = value
+        shared_state["joystick_buttons"] = buttons
+        return
+    
     # Process axis events for control channels
     if event_type == config.EVENT_TYPE_AXIS:
         # Check if this axis maps to a known channel
@@ -86,6 +93,11 @@ def process_joystick_event(event: dict, shared_state: dict) -> None:
             channels[channel_idx] = value  # Use raw value directly
             shared_state["joystick_channels"] = channels
             shared_state["joystick_last_update"] = time.time()
+        else:
+            # Store unmapped axes for passthrough
+            other_axes = dict(shared_state.get("joystick_other_axes", {}))
+            other_axes[number] = value
+            shared_state["joystick_other_axes"] = other_axes
 
 
 def joystick_receiver_loop(shared_state: dict, device: str = "/dev/input/js0", verbose: bool = False) -> None:

@@ -53,6 +53,10 @@ def create_shared_state(manager: Manager) -> dict:
     # Initialize pitch ramp reset flag
     state["reset_pitch_ramp"] = False
     
+    # Initialize button and unmapped axis storage for passthrough
+    state["joystick_buttons"] = manager.dict()  # Button states: {button_num: value}
+    state["joystick_other_axes"] = manager.dict()  # Unmapped axes: {axis_num: value}
+    
     return state
 
 

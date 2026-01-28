@@ -22,6 +22,8 @@ CONTROL_UDP_PORT = 5001
 # Port for sending output commands to drone control system
 OUTPUT_UDP_PORT = 5005
 OUTPUT_UDP_HOST = "192.168.178.200"  # Destination for output commands
+#OUTPUT_UDP_HOST = "127.0.0.1"  # Localhost for testing
+
 
 # =============================================================================
 # CHANNEL CONFIGURATION

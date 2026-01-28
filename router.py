@@ -40,6 +40,8 @@ class CommandRouter:
         self.last_mode = None
         self.loop_interval = 1.0 / config.ROUTER_LOOP_HZ
         self.skip_frames_after_switch = 0  # Counter to skip frames after mode switch
+        self.last_throttle_print_time = 0.0  # Time of last throttle print
+        self.throttle_print_interval = 0.5  # Print throttle every 0.5 seconds
         
     def get_active_channels(self) -> list:
         """
@@ -81,8 +83,18 @@ class CommandRouter:
         Perform a single routing iteration.
         
         Gets active channels and forwards to output.
+        Always sends button events and unmapped axes from physical controller.
         """
         channels = self.get_active_channels()
+        
+        # Print throttle value periodically in joystick mode
+        mode = self.shared_state.get("switch_state", config.MODE_JOYSTICK)
+        if mode == config.MODE_JOYSTICK:
+            current_time = time.time()
+            if current_time - self.last_throttle_print_time >= self.throttle_print_interval:
+                throttle = channels[config.CHANNEL_THROTTLE]
+                print(f"[Joystick] Throttle: {throttle:+8.1f}")
+                self.last_throttle_print_time = current_time
         
         # Skip sending data for first few frames after mode switch
         if self.skip_frames_after_switch > 0:
@@ -90,7 +102,25 @@ class CommandRouter:
             print(f"[Router] Skipping frame (remaining skips: {self.skip_frames_after_switch})")
             return
         
+        # Send main channels (axes 0-3)
         self.output_func(channels)
+        
+        # Always pass through physical controller buttons and unmapped axes (4-7)
+        # This works in BOTH modes:
+        # - JOYSTICK mode: axes 0-3 from joystick + axes 4-7 + buttons
+        # - UDP mode: axes 0-3 from UDP + axes 4-7 + buttons
+        
+        # Pass through button events
+        buttons = dict(self.shared_state.get("joystick_buttons", {}))
+        for button_num, button_value in buttons.items():
+            if hasattr(self.output_func, '__self__'):  # Check if it's a method
+                self.output_func.__self__.send_button_event(button_num, button_value)
+        
+        # Pass through unmapped axes (4-7)
+        other_axes = dict(self.shared_state.get("joystick_other_axes", {}))
+        for axis_num, axis_value in other_axes.items():
+            if hasattr(self.output_func, '__self__'):
+                self.output_func.__self__.send_axis_event(axis_num, axis_value)
     
     def run(self) -> None:
         """

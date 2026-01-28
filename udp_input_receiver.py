@@ -71,7 +71,7 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
         
     
     # Roll/Yaw control based on dx
-    max_correction = 1000  # Max correction value
+    max_correction = 3000  # Max correction value
     if dx > 10:
         roll = min(max_correction, dx * 40)
         yaw = min(max_correction, dx * 40)
@@ -82,9 +82,12 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
         roll = 0.0
         yaw = 0.0
 
+    roll_multiplier = 3.0
+    roll = roll * roll_multiplier
+
     # ===== PITCH RAMPING =====
-    target_pitch = 25000
-    ramp_rate = 200  # Units per update (adjust for faster/slower ramp)
+    target_pitch = 23000
+    ramp_rate = 300  # Units per update (adjust for faster/slower ramp)
     
     
     current_pitch = _throttle_state["current_pitch"]
@@ -101,8 +104,9 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     #print(f"Pitch ramp: {pitch:.1f} (ratio: {pitch_ratio:.3f})")
     
     # ===== THROTTLE ALGORITHM - PID Controller with Soft Target =====
-    hover_throttle = 0  # Fixed baseline throttle
-    final_target_dy = 100  # Final target position (negative = target above center)
+    #hover_throttle = -23000  # Fixed baseline throttle
+    hover_throttle = -16000  # Fixed baseline throttle
+    final_target_dy = 40 # Final target position (negative = target above center)
     
     # Capture initial dy value when first switching to UDP mode
     if _throttle_state["initial_dy"] is None:
@@ -116,7 +120,7 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     
     #print(f"Soft target: initial={initial_dy:.1f}, current_target={target_dy:.1f}, final={final_target_dy:.1f}, ratio={pitch_ratio:.3f}")
 
-    
+    print(f"Current dy: {dy}, Target dy: {target_dy:.1f}")
     # PID gains - MORE AGGRESSIVE (increased for faster response, less overshoot)
     Kp = 50.0   # Proportional gain - much more aggressive immediate response
     Ki = 20.0    # Integral gain - faster correction of steady-state error
@@ -154,7 +158,7 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     
     # Debug output (uncomment to tune)
     #print(f"dy={dy:4d} err={error:6.1f} P={P:6.1f} I={I:6.1f} D={D:6.1f} thr={throttle:6.0f}")
-    print(f"Pitch: {pitch:6.0f}, Throttle: {throttle:6.0f}")
+    #print(f"Pitch: {pitch:6.0f}, Throttle: {throttle:6.0f}")
 
 
     return roll, pitch, throttle, yaw
@@ -168,7 +172,7 @@ def process_udp_input(data: dict, shared_state: dict) -> None:
     bw = data.get("bw", 0)
     bh = data.get("bh", 0)
 
-    print(f"[UDP Input] Received dx={dx}, dy={dy}, bw={bw}, bh={bh}")
+    #print(f"[UDP Input] Received dx={dx}, dy={dy}, bw={bw}, bh={bh}")
     
     # Apply correction logic
     roll, pitch, throttle, yaw = apply_correction_logic(dx, dy, shared_state)

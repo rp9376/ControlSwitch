@@ -83,6 +83,48 @@ class UDPOutput:
         if self.verbose:
             print(f"[UDPOutput] Sent: {channels}")
     
+    def send_button_event(self, button_number: int, value: int) -> None:
+        """
+        Send a button event from physical controller.
+        
+        Args:
+            button_number: Button number
+            value: Button value (1=pressed, 0=released)
+        """
+        timestamp_ms = int(time.time() * 1000)
+        event = {
+            "type": 1,  # Button event
+            "time": timestamp_ms,
+            "number": button_number,
+            "value": value
+        }
+        data = json.dumps(event).encode("utf-8")
+        self.sock.sendto(data, (self.host, self.port))
+        
+        if self.verbose:
+            print(f"[UDPOutput] Button {button_number}: {value}")
+    
+    def send_axis_event(self, axis_number: int, value: int) -> None:
+        """
+        Send an individual axis event (for unmapped axes passthrough).
+        
+        Args:
+            axis_number: Axis number
+            value: Axis value
+        """
+        timestamp_ms = int(time.time() * 1000)
+        event = {
+            "type": 2,  # Axis event
+            "time": timestamp_ms,
+            "number": axis_number,
+            "value": int(value)
+        }
+        data = json.dumps(event).encode("utf-8")
+        self.sock.sendto(data, (self.host, self.port))
+        
+        if self.verbose:
+            print(f"[UDPOutput] Axis {axis_number}: {value}")
+    
     def close(self) -> None:
         """Close the UDP socket."""
         self.sock.close()
