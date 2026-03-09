@@ -20,18 +20,23 @@ _throttle_state = {
     "last_error": 0.0,    # Previous error for D control
     "last_time": 0.0,     # Last update time
     "current_pitch": 0.0, # Current pitch value for ramping
-    "initial_dy": None    # Initial dy value when switching to UDP mode
+    "initial_dy": None,   # Initial dy value when switching to UDP mode
+    "filtered_dy": None,  # EMA-filtered dy used only for D term
 }
 
 
 def reset_pitch_ramp():
     """Reset pitch ramp to zero when switching to UDP mode."""
     _throttle_state["current_pitch"] = 0.0
-    _throttle_state["initial_dy"] = None  # Reset initial dy for soft target
+    _throttle_state["initial_dy"] = None
+    _throttle_state["filtered_dy"] = None  # Reset EMA so it seeds cleanly
+    _throttle_state["integral"] = 0.0      # Clear integrator windup
+    _throttle_state["last_error"] = 0.0
+    _throttle_state["last_time"] = 0.0
     # print("[UDP Input] Pitch ramp reset to 0")
 
 
-def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple:
+def apply_correction_logic(dx: int, dy: int, bw: int, bh: int, shared_state: dict = None) -> tuple:
     """
     Apply adjustment logic to incoming correction values.
     
@@ -40,7 +45,7 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     
     Args:
         dx: Raw correction value for roll
-        dy: Raw correction value for pitch
+        dy: Raw correction value for pitch/throttle
         shared_state: Shared state dict for reset signals
     
     Returns:
@@ -66,12 +71,16 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
         else:
             _throttle_state["current_pitch"] = 0.0
         
-        _throttle_state["initial_dy"] = None  # Reset initial dy
+        _throttle_state["initial_dy"] = None
+        _throttle_state["filtered_dy"] = None  # Reset EMA filter
+        _throttle_state["integral"] = 0.0       # Clear integrator
+        _throttle_state["last_error"] = 0.0
+        _throttle_state["last_time"] = 0.0
         shared_state["reset_pitch_ramp"] = False
         
     
     # Roll/Yaw control based on dx
-    max_correction = 3000  # Max correction value
+    max_correction = 2500  # Max correction value
     if dx > 10:
         roll = min(max_correction, dx * 40)
         yaw = min(max_correction, dx * 40)
@@ -85,10 +94,10 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     roll_multiplier = 3.0
     roll = roll * roll_multiplier
 
+
     # ===== PITCH RAMPING =====
     target_pitch = 23000
     ramp_rate = 300  # Units per update (adjust for faster/slower ramp)
-    
     
     current_pitch = _throttle_state["current_pitch"]
     
@@ -105,7 +114,7 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     
     # ===== THROTTLE ALGORITHM - PID Controller with Soft Target =====
     #hover_throttle = -23000  # Fixed baseline throttle
-    hover_throttle = -16000  # Fixed baseline throttle
+    hover_throttle = -15000  # Fixed baseline throttle
     final_target_dy = 40 # Final target position (negative = target above center)
     
     # Capture initial dy value when first switching to UDP mode
@@ -120,34 +129,43 @@ def apply_correction_logic(dx: int, dy: int, shared_state: dict = None) -> tuple
     
     #print(f"Soft target: initial={initial_dy:.1f}, current_target={target_dy:.1f}, final={final_target_dy:.1f}, ratio={pitch_ratio:.3f}")
 
-    print(f"Current dy: {dy}, Target dy: {target_dy:.1f}")
-    # PID gains - MORE AGGRESSIVE (increased for faster response, less overshoot)
-    Kp = 50.0   # Proportional gain - much more aggressive immediate response
-    Ki = 20.0    # Integral gain - faster correction of steady-state error
-    Kd = 80.0   # Derivative gain - stronger dampening to prevent overshoot
-    
-    # Calculate error (how far we are from target)
+    print(f"dy: {dy:4d}  target: {target_dy:6.1f}  err: {target_dy - dy:6.1f}")
+
+    # PID gains
+    Kp = 50.0   # Proportional - on raw dy, stays snappy near target
+    Ki = 20.0   # Integral - steady-state correction
+    Kd = 80.0   # Derivative - on EMA-filtered dy only, kills noise spikes
+
+    # Error for P and I uses raw dy so response is immediate when near target
     error = target_dy - dy
-    
+
+    # EMA filter on dy for D term only (alpha=0.5: fast enough to track, smooth enough for D)
+    # This stops 1px noise bounces from causing 4000-unit throttle spikes via D
+    EMA_ALPHA = 0.5
+    if _throttle_state["filtered_dy"] is None:
+        _throttle_state["filtered_dy"] = float(dy)
+    _throttle_state["filtered_dy"] = EMA_ALPHA * dy + (1.0 - EMA_ALPHA) * _throttle_state["filtered_dy"]
+    filtered_error = target_dy - _throttle_state["filtered_dy"]
+
     # Time delta for integral/derivative
     current_time = time.time()
     dt = current_time - _throttle_state["last_time"]
     if _throttle_state["last_time"] == 0.0 or dt > 1.0:
         dt = 0.02  # Default to 50Hz if first call or too long
     _throttle_state["last_time"] = current_time
-    
-    # Proportional term
+
+    # Proportional term (raw - fast response)
     P = Kp * error
-    
-    # Integral term (accumulated error over time)
+
+    # Integral term (raw - accumulated error over time)
     _throttle_state["integral"] += error * dt
-    # Anti-windup: clamp integral to prevent runaway (tighter limit)
+    # Anti-windup: clamp integral to prevent runaway
     _throttle_state["integral"] = max(-200, min(200, _throttle_state["integral"]))
     I = Ki * _throttle_state["integral"]
-    
-    # Derivative term (rate of change of error)
-    D = Kd * (error - _throttle_state["last_error"]) / dt if dt > 0 else 0.0
-    _throttle_state["last_error"] = error
+
+    # Derivative term (filtered - rate of change without noise amplification)
+    D = Kd * (filtered_error - _throttle_state["last_error"]) / dt if dt > 0 else 0.0
+    _throttle_state["last_error"] = filtered_error
     
     # Calculate throttle: baseline + PID adjustment
     throttle_adjustment = P + I + D
@@ -175,7 +193,7 @@ def process_udp_input(data: dict, shared_state: dict) -> None:
     #print(f"[UDP Input] Received dx={dx}, dy={dy}, bw={bw}, bh={bh}")
     
     # Apply correction logic
-    roll, pitch, throttle, yaw = apply_correction_logic(dx, dy, shared_state)
+    roll, pitch, throttle, yaw = apply_correction_logic(dx, dy, bw, bh, shared_state)
     
     # Update shared state
     channels = [0.0] * config.NUM_CHANNELS

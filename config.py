@@ -24,6 +24,8 @@ OUTPUT_UDP_PORT = 5005
 OUTPUT_UDP_HOST = "192.168.178.200"  # Destination for output commands
 #OUTPUT_UDP_HOST = "127.0.0.1"  # Localhost for testing
 
+SECONDARY_UDP_HOST = "192.168.178.21"
+SECONDARY_UDP_PORT = 5005  # Secondary output uses same port as primary
 
 # =============================================================================
 # CHANNEL CONFIGURATION

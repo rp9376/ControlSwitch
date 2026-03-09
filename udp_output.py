@@ -46,7 +46,13 @@ class UDPOutput:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.verbose = False  # Set False to disable logging
         
-        print(f"[UDPOutput] Sending to {self.host}:{self.port}")
+        # Set up secondary output if defined
+        self.secondary_host = getattr(config, 'SECONDARY_UDP_HOST', None)
+        self.secondary_port = getattr(config, 'SECONDARY_UDP_PORT', None) if self.secondary_host else None
+        
+        print(f"[UDPOutput] Primary: {self.host}:{self.port}")
+        if self.secondary_host and self.secondary_port:
+            print(f"[UDPOutput] Secondary: {self.secondary_host}:{self.secondary_port}")
     
     def send_channels(self, channels: list) -> None:
         """
@@ -78,6 +84,10 @@ class UDPOutput:
             #print(f"[UDPOutput] Sending axis event: {event}")
             data = json.dumps(event).encode("utf-8")
             self.sock.sendto(data, (self.host, self.port))
+            
+            # Send to secondary if defined
+            if self.secondary_host and self.secondary_port:
+                self.sock.sendto(data, (self.secondary_host, self.secondary_port))
         
         # Debug logging (can be disabled for production)
         if self.verbose:
@@ -101,6 +111,10 @@ class UDPOutput:
         data = json.dumps(event).encode("utf-8")
         self.sock.sendto(data, (self.host, self.port))
         
+        # Send to secondary if defined
+        if self.secondary_host and self.secondary_port:
+            self.sock.sendto(data, (self.secondary_host, self.secondary_port))
+        
         if self.verbose:
             print(f"[UDPOutput] Button {button_number}: {value}")
     
@@ -121,6 +135,10 @@ class UDPOutput:
         }
         data = json.dumps(event).encode("utf-8")
         self.sock.sendto(data, (self.host, self.port))
+        
+        # Send to secondary if defined
+        if self.secondary_host and self.secondary_port:
+            self.sock.sendto(data, (self.secondary_host, self.secondary_port))
         
         if self.verbose:
             print(f"[UDPOutput] Axis {axis_number}: {value}")

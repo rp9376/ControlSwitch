@@ -66,11 +66,11 @@ def process_joystick_event(event: dict, shared_state: dict) -> None:
     
     # Check if this is the routing switch (BUTTON event)
     if event_type == config.EVENT_TYPE_BUTTON and number == config.SWITCH_BUTTON_NUMBER:
-        # Button pressed = Joystick mode, Released = UDP mode
+        # Button pressed = UDP mode, Released = Joystick mode
         if value > config.SWITCH_THRESHOLD:
-            shared_state["switch_state"] = config.MODE_JOYSTICK
-        else:
             shared_state["switch_state"] = config.MODE_UDP
+        else:
+            shared_state["switch_state"] = config.MODE_JOYSTICK
         return
     
     # Store ALL button events for passthrough (except the mode switch button)
