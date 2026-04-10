@@ -64,8 +64,8 @@ def process_joystick_event(event: dict, shared_state: dict) -> None:
     number = event.get("number")
     value = event.get("value", 0)
     
-    # Check if this is the routing switch (BUTTON event)
-    if event_type == config.EVENT_TYPE_BUTTON and number == config.SWITCH_BUTTON_NUMBER:
+    # Check if this is the routing switch (AXIS event)
+    if event_type == config.EVENT_TYPE_AXIS and number == config.SWITCH_BUTTON_NUMBER:
         # Button pressed = UDP mode, Released = Joystick mode
         if value > config.SWITCH_THRESHOLD:
             shared_state["switch_state"] = config.MODE_UDP
@@ -150,8 +150,8 @@ def joystick_receiver_loop(shared_state: dict, device: str = "/dev/input/js0", v
                     num = int(number)
                     val = int(value)
                     
-                    # Check if it's the switch button
-                    if evt_type == config.EVENT_TYPE_BUTTON and num == config.SWITCH_BUTTON_NUMBER:
+                    # Check if it's the switch axis
+                    if evt_type == config.EVENT_TYPE_AXIS and num == config.SWITCH_BUTTON_NUMBER:
                         mode = "JOYSTICK" if val > config.SWITCH_THRESHOLD else "UDP"
                         print(f"[BUTTON {num}] Mode: {mode:8s} (raw: {val:6d})")
                     # Check if it's a mapped axis
